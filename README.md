@@ -19,7 +19,7 @@ On produit ensuite les 7 courbes demandées et on répond aux 7 questions du suj
 
 ## 2. Organisation de l'équipe
 
-### Principe
+### Approche
 
 ```
  Socle commun (infra, applis, données, runner)  ──►  Campagnes en parallèle  ──►  Analyse commune
@@ -29,50 +29,46 @@ On produit ensuite les 7 courbes demandées et on répond aux 7 questions du suj
 1. **Un seul socle pour tout le monde.** Même Terraform, même Ansible, mêmes VMs, mêmes versions, même config Spark de base.
    Seuls les **paramètres de compression** changent d'un run à l'autre.
 2. **Chacun déploie ce socle sur son propre compte GCP** (crédits d'essai) et y fait tourner **son** bloc d'expériences.
-3. **On découpe les campagnes par application, pas par section du sujet.**
+3. **Les campagnes sont découpées par application, pas par section du sujet.**
    Les sections 5.1, 5.2 et 5.3 sont des tranches d'une même grille *codec stockage × codec shuffle* : C1 = runs de 5.1, C2 = runs de 5.2.
-   Si on les répartissait entre plusieurs personnes, il faudrait comparer des runs faits sur des clusters différents.
    En découpant par appli, **toutes les comparaisons d'une même appli sont faites sur le même cluster**.
 
-### Phase 1 — Socle commun (jusqu'au ~7 décembre)
+### Configuration commune
 
-Pas besoin de tout diviser : l'infra initiale est montée par une personne, les autres avancent en parallèle sur ce qui n'en dépend pas.
+| Commun à tous (modifiable uniquement par PR) | Personnel |
+|---|---|
+| Infra : `infra/terraform`, `infra/ansible` (VMs, versions, config Hadoop/Spark) | `infra/terraform/terraform.tfvars` : son projet GCP, son prénom, son IP |
+| Config Spark de base = C0, toute compression coupée | `experiments/<prénom>.yaml` : son plan d'expériences |
+| Données : même générateur, même graine, régénérées sur chaque cluster | `results/<prénom>/` : ses résultats bruts |
+| Les 3 applications, le runner, le format CSV des résultats | |
 
-| Chantier | Qui | Dépend de |
+Une fois le socle validé, on pose le tag **`v1.0`** et tout le monde lance ses mesures depuis ce tag. On n'y touche plus pendant la campagne.
+
+### Rôle de chacun
+
+| Personne | Construction du socle | Campagne de mesures |
 |---|---|---|
-| Infra : Terraform + Ansible + monitoring (**ce repo, fait**) | _à compléter_ | — |
-| Micro-benchmark des codecs seuls (§4 du sujet : ratio, vitesse, CPU) | _à compléter_ | rien, faisable en local |
-| Les 3 applications + générateur de données | _à compléter_ | rien, faisable en local |
-| Runner d'expériences + format CSV des résultats | _à compléter_ | infra |
+| P1 | Infra : Terraform, Ansible, monitoring | Appli **I/O-bound** : balayage stockage, balayage shuffle, C0–C3, 4 tailles |
+| P2 | Runner d'expériences + format CSV | Appli **CPU-bound** : idem |
+| P3 | Les 3 applications + générateur de données | Appli **mixte** : idem |
+| P4 | Micro-benchmark des codecs seuls (§4 du sujet) + scripts de graphes | **Transversal** : micro-benchmark, graphes communs, cohérence du protocole |
 
-### Phase 2 — Pilote (semaine du 8 décembre)
+La construction du socle n'a pas besoin d'être strictement découpée : chacun avance sur ce qui n'est pas bloqué.
+À l'analyse, les 7 questions du sujet sont rédigées ensemble. Chacun rédige la partie de son application et doit pouvoir la défendre à l'oral.
 
-Un seul compte GCP, petites tailles. On valide l'infra, **on prouve le profil de chaque appli** (I/O, CPU, mixte) avec les métriques,
-on mesure la durée réelle des runs, puis on fige la grille d'expériences et on pose le tag **`v1.0`**.
+### Déroulement
 
-### Phase 3 — Campagne (du 15 décembre à début janvier)
+1. **Socle commun.** Le micro-benchmark et les applications se développent en local, sans attendre l'infra.
+2. **Pilote** sur un seul compte GCP, avec de petites tailles : on valide l'infra, **on prouve le profil de chaque appli** (I/O, CPU, mixte) avec les métriques, puis on fige la grille d'expériences et on pose `v1.0`.
+3. **Campagnes en parallèle**, chacun sur son cluster.
+4. **Analyse commune** sur les CSV fusionnés, puis rapport et soutenance.
 
-| Personne | Bloc | Contenu |
-|---|---|---|
-| P1 | Appli **I/O-bound** | balayage stockage, balayage shuffle, C0–C3, 4 tailles |
-| P2 | Appli **CPU-bound** | idem |
-| P3 | Appli **mixte** | idem |
-| P4 | **Transversal** | micro-benchmark des codecs, scripts de graphes, cohérence du protocole |
+### Règles pour que les résultats restent comparables
 
-Chacun lance aussi un même **benchmark de calibration** : si les clusters donnent les mêmes temps en C0, on a la preuve qu'ils sont équivalents.
-Les comparaisons entre applis se font en **gain relatif** (temps / temps C0 de la même appli), ce qui neutralise les petits écarts entre clusters.
-
-### Phase 4 — Analyse, rapport, soutenance (janvier)
-
-Les 7 questions sont transversales : on les rédige ensemble sur le CSV fusionné.
-Chacun rédige la partie de son application et doit pouvoir la défendre à l'oral.
-
-### Dépendances à respecter
-
-- Le **socle** bloque tout le reste. Une fois `v1.0` posé, **on n'y touche plus** pendant la campagne.
-- La **caractérisation des applis** est bloquante : si l'appli « I/O-bound » se révèle CPU-bound, toute sa campagne est à refaire. On la valide pendant le pilote.
+- La **caractérisation des applis** est bloquante : si l'appli « I/O-bound » se révèle CPU-bound, toute sa campagne est à refaire.
 - Dans chaque bloc, on fait d'abord les balayages de codecs, **puis** on choisit les codecs de C3.
-- **Les données sont les mêmes pour tout le monde** : même générateur, même graine, régénérées sur chaque cluster.
+- Chacun lance le même **benchmark de calibration**. Si les clusters donnent les mêmes temps en C0, on a la preuve qu'ils sont équivalents.
+- Les comparaisons entre applis se font en **gain relatif** (temps / temps C0 de la même appli), ce qui neutralise les petits écarts entre clusters.
 
 ## 3. Infrastructure
 
@@ -133,7 +129,7 @@ Chacun rédige la partie de son application et doit pouvoir la défendre à l'or
 **Prérequis** : Docker Desktop, [gcloud CLI](https://cloud.google.com/sdk/docs/install), un compte GCP.
 Terraform et Ansible tournent **dans un conteneur** (`toolbox/`), donc tout le monde a les mêmes versions, quel que soit son OS.
 
-> ⚠️ L'essai GCP dure **90 jours à partir de l'activation**. Ne l'activer qu'au moment où on en a besoin (pilote ou campagne).
+> ⚠️ L'essai GCP dure **90 jours à partir de l'activation**. Ne l'activer qu'au moment où on en a besoin.
 
 1. **Créer un projet GCP** dans la console (rattaché au compte de facturation de l'essai), puis noter son ID.
 2. **Identifiants pour Terraform** :
