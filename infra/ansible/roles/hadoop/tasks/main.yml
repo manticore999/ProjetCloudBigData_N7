@@ -1,0 +1,54 @@
+---
+- name: Télécharger Hadoop {{ hadoop_version }} (CDN Apache, repli sur l'archive)
+  block:
+    - name: Depuis le CDN
+      ansible.builtin.get_url:
+        url: "{{ apache_cdn }}/hadoop/common/hadoop-{{ hadoop_version }}/hadoop-{{ hadoop_version }}.tar.gz"
+        dest: "{{ download_dir }}/hadoop-{{ hadoop_version }}.tar.gz"
+        checksum: "sha512:{{ hadoop_sha512 }}"
+        timeout: 120
+  rescue:
+    - name: Depuis archive.apache.org
+      ansible.builtin.get_url:
+        url: "{{ apache_archive }}/hadoop/common/hadoop-{{ hadoop_version }}/hadoop-{{ hadoop_version }}.tar.gz"
+        dest: "{{ download_dir }}/hadoop-{{ hadoop_version }}.tar.gz"
+        checksum: "sha512:{{ hadoop_sha512 }}"
+        timeout: 300
+
+- name: Décompresser Hadoop
+  ansible.builtin.unarchive:
+    src: "{{ download_dir }}/hadoop-{{ hadoop_version }}.tar.gz"
+    dest: /opt
+    remote_src: true
+    creates: "/opt/hadoop-{{ hadoop_version }}/bin/hadoop"
+
+- name: Lien /opt/hadoop
+  ansible.builtin.file:
+    src: "/opt/hadoop-{{ hadoop_version }}"
+    dest: "{{ hadoop_home }}"
+    state: link
+
+- name: Fichiers de configuration Hadoop
+  ansible.builtin.template:
+    src: "{{ item }}.j2"
+    dest: "{{ hadoop_conf_dir }}/{{ item }}"
+    mode: "0644"
+  loop:
+    - core-site.xml
+    - hdfs-site.xml
+    - yarn-site.xml
+    - hadoop-env.sh
+    - workers
+  notify: Redémarrer les démons Hadoop
+
+- name: Démons Hadoop de ce nœud
+  ansible.builtin.set_fact:
+    hadoop_daemons: "{{ hadoop_master_daemons if inventory_hostname in groups['master'] else hadoop_worker_daemons }}"
+
+- name: Unités systemd des démons Hadoop
+  ansible.builtin.template:
+    src: hadoop-daemon.service.j2
+    dest: "/etc/systemd/system/{{ item.name }}.service"
+    mode: "0644"
+  loop: "{{ hadoop_daemons }}"
+  notify: Redémarrer les démons Hadoop

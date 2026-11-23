@@ -1,0 +1,28 @@
+---
+- name: Unité systemd du Spark History Server
+  ansible.builtin.copy:
+    dest: /etc/systemd/system/spark-history.service
+    mode: "0644"
+    content: |
+      [Unit]
+      Description=Spark History Server
+      After=hdfs-namenode.service
+      Requires=hdfs-namenode.service
+
+      [Service]
+      User={{ bigdata_user }}
+      Group={{ bigdata_user }}
+      EnvironmentFile=/etc/default/bigdata
+      ExecStart={{ spark_home }}/bin/spark-class org.apache.spark.deploy.history.HistoryServer
+      Restart=on-failure
+      RestartSec=5
+
+      [Install]
+      WantedBy=multi-user.target
+
+- name: Démarrer le Spark History Server (UI :18080, lit les event logs dans hdfs:///spark-logs)
+  ansible.builtin.systemd:
+    name: spark-history
+    state: started
+    enabled: true
+    daemon_reload: true

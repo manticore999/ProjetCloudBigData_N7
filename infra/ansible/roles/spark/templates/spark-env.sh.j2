@@ -1,0 +1,9 @@
+# {{ ansible_managed }}
+export JAVA_HOME={{ java_home }}
+export HADOOP_CONF_DIR={{ hadoop_conf_dir }}
+export YARN_CONF_DIR={{ hadoop_conf_dir }}
+export SPARK_LOG_DIR={{ data_mount }}/logs/spark
+export SPARK_DAEMON_MEMORY=512m
+export PYSPARK_PYTHON=python3
+export PYSPARK_DRIVER_PYTHON=python3
+export LD_LIBRARY_PATH={{ hadoop_home }}/lib/native:${LD_LIBRARY_PATH:-}

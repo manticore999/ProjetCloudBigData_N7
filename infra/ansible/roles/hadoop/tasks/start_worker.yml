@@ -1,0 +1,10 @@
+---
+- name: Démarrer DataNode et NodeManager
+  ansible.builtin.systemd:
+    name: "{{ item }}"
+    state: started
+    enabled: true
+    daemon_reload: true
+  loop:
+    - hdfs-datanode
+    - yarn-nodemanager

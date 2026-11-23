@@ -1,0 +1,47 @@
+---
+# node_exporter expose les compteurs système de chaque nœud (CPU, mémoire,
+# disque par périphérique, réseau par interface) ; Prometheus les collecte.
+- name: Utilisateur système node_exporter
+  ansible.builtin.user:
+    name: node_exporter
+    system: true
+    shell: /usr/sbin/nologin
+    create_home: false
+
+- name: Télécharger node_exporter {{ node_exporter_version }}
+  ansible.builtin.get_url:
+    url: "https://github.com/prometheus/node_exporter/releases/download/v{{ node_exporter_version }}/node_exporter-{{ node_exporter_version }}.linux-amd64.tar.gz"
+    dest: "{{ download_dir }}/node_exporter-{{ node_exporter_version }}.tar.gz"
+    checksum: "sha256:{{ node_exporter_sha256 }}"
+
+- name: Décompresser node_exporter
+  ansible.builtin.unarchive:
+    src: "{{ download_dir }}/node_exporter-{{ node_exporter_version }}.tar.gz"
+    dest: /opt
+    remote_src: true
+    creates: "/opt/node_exporter-{{ node_exporter_version }}.linux-amd64/node_exporter"
+
+- name: Unité systemd node_exporter
+  ansible.builtin.copy:
+    dest: /etc/systemd/system/node_exporter.service
+    mode: "0644"
+    content: |
+      [Unit]
+      Description=Prometheus node_exporter
+      After=network-online.target
+
+      [Service]
+      User=node_exporter
+      ExecStart=/opt/node_exporter-{{ node_exporter_version }}.linux-amd64/node_exporter --web.listen-address=:9100
+      Restart=on-failure
+
+      [Install]
+      WantedBy=multi-user.target
+  register: node_exporter_unit
+
+- name: Démarrer node_exporter
+  ansible.builtin.systemd:
+    name: node_exporter
+    state: "{{ 'restarted' if node_exporter_unit.changed else 'started' }}"
+    enabled: true
+    daemon_reload: true

@@ -1,0 +1,22 @@
+# Secrets (clé SSH du cluster, identifiants GCP)
+.secrets/
+
+# Terraform : état et variables propres à chaque membre
+infra/terraform/.terraform/
+infra/terraform/*.tfstate
+infra/terraform/*.tfstate.*
+infra/terraform/terraform.tfvars
+infra/terraform/crash.log
+
+# Généré par Terraform
+infra/ansible/inventory/hosts.ini
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+
+# Divers
+*.retry
+.DS_Store
+Thumbs.db

@@ -1,0 +1,39 @@
+---
+- name: Télécharger Spark {{ spark_version }} (CDN Apache, repli sur l'archive)
+  block:
+    - name: Depuis le CDN
+      ansible.builtin.get_url:
+        url: "{{ apache_cdn }}/spark/spark-{{ spark_version }}/{{ spark_package }}.tgz"
+        dest: "{{ download_dir }}/{{ spark_package }}.tgz"
+        checksum: "sha512:{{ spark_sha512 }}"
+        timeout: 120
+  rescue:
+    - name: Depuis archive.apache.org
+      ansible.builtin.get_url:
+        url: "{{ apache_archive }}/spark/spark-{{ spark_version }}/{{ spark_package }}.tgz"
+        dest: "{{ download_dir }}/{{ spark_package }}.tgz"
+        checksum: "sha512:{{ spark_sha512 }}"
+        timeout: 300
+
+- name: Décompresser Spark
+  ansible.builtin.unarchive:
+    src: "{{ download_dir }}/{{ spark_package }}.tgz"
+    dest: /opt
+    remote_src: true
+    creates: "/opt/{{ spark_package }}/bin/spark-submit"
+
+- name: Lien /opt/spark
+  ansible.builtin.file:
+    src: "/opt/{{ spark_package }}"
+    dest: "{{ spark_home }}"
+    state: link
+
+- name: Configuration Spark (identique sur tous les nœuds)
+  ansible.builtin.template:
+    src: "{{ item }}.j2"
+    dest: "{{ spark_home }}/conf/{{ item }}"
+    mode: "0644"
+  loop:
+    - spark-defaults.conf
+    - spark-env.sh
+  notify: Redémarrer le Spark History Server

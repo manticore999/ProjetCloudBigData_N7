@@ -1,0 +1,20 @@
+# Vérifie que le cluster est prêt pour les mesures : `make smoke`.
+---
+- name: Test de bon fonctionnement du cluster
+  hosts: master
+  become: true
+  tasks:
+    - name: Lancer cluster-smoke-test (HDFS, YARN, libs natives, codecs stockage + shuffle)
+      ansible.builtin.command: /usr/local/bin/cluster-smoke-test
+      register: smoke
+      changed_when: false
+      failed_when: false
+
+    - name: Résultat
+      ansible.builtin.debug:
+        msg: "{{ smoke.stdout_lines | select('match', '^(==|CHECK|FAIL|OK|zlib|zstd|bzip2|hadoop:)') | list }}"
+
+    - name: Échec du smoke test
+      ansible.builtin.fail:
+        msg: "Smoke test en échec (rc={{ smoke.rc }}). Détails : ssh sur le master puis `cluster-smoke-test`."
+      when: smoke.rc != 0

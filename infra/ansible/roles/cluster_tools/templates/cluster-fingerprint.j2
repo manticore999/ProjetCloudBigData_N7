@@ -1,0 +1,46 @@
+#!/usr/bin/env bash
+# {{ ansible_managed }}
+# Affiche en JSON l'empreinte matérielle et logicielle du cluster.
+# Elle sera jointe à chaque résultat : deux clusters ne sont comparables
+# que si leurs empreintes sont identiques (hors noms et IP).
+set -euo pipefail
+[ "$(id -un)" = "{{ bigdata_user }}" ] || exec sudo -u {{ bigdata_user }} "$0" "$@"
+
+read -r -d '' PROBE <<'EOF' || true
+md() { curl -s -H 'Metadata-Flavor: Google' "http://metadata.google.internal/computeMetadata/v1/instance/$1"; }
+jq -n \
+  --arg host "$(hostname)" \
+  --arg machine_type "$(md machine-type | awk -F/ '{print $NF}')" \
+  --arg zone "$(md zone | awk -F/ '{print $NF}')" \
+  --arg cpu_platform "$(md cpu-platform)" \
+  --arg cpu_model "$(lscpu | sed -n 's/^Model name:[[:space:]]*//p')" \
+  --arg vcpus "$(nproc)" \
+  --arg mem_kb "$(awk '/MemTotal/ {print $2}' /proc/meminfo)" \
+  --arg kernel "$(uname -r)" \
+  --arg os "$(. /etc/os-release && echo "$PRETTY_NAME")" \
+  --arg data_disk_gb "$(lsblk -bndo SIZE /dev/disk/by-id/google-data | awk '{print int($1/1024/1024/1024)}')" \
+  '{host:$host, machine_type:$machine_type, zone:$zone, cpu_platform:$cpu_platform, cpu_model:$cpu_model,
+    vcpus:($vcpus|tonumber), mem_kb:($mem_kb|tonumber), kernel:$kernel, os:$os, data_disk_gb:($data_disk_gb|tonumber)}'
+EOF
+
+nodes=$(for h in {{ groups['cluster'] | join(' ') }}; do ssh -o BatchMode=yes "$h" "bash -s" <<< "$PROBE"; done | jq -s '.')
+
+jq -n --argjson nodes "$nodes" '{
+  cluster: "{{ cluster_name }}",
+  versions: {
+    java: "{{ java_package }}",
+    hadoop: "{{ hadoop_version }}",
+    spark: "{{ spark_version }}",
+    node_exporter: "{{ node_exporter_version }}",
+    prometheus: "{{ prometheus_version }}"
+  },
+  hdfs: { replication: {{ hdfs_replication }}, block_size: {{ hdfs_block_size }} },
+  spark_resources: {
+    executor_instances: {{ spark_executor_instances }},
+    executor_cores: {{ spark_executor_cores }},
+    executor_memory: "{{ spark_executor_memory }}",
+    driver_memory: "{{ spark_driver_memory }}",
+    shuffle_partitions: {{ spark_sql_shuffle_partitions }}
+  },
+  nodes: $nodes
+}'

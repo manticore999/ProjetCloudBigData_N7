@@ -1,0 +1,18 @@
+# {{ ansible_managed }}
+[Unit]
+Description={{ item.description }}
+After=network-online.target data.mount
+Wants=network-online.target
+
+[Service]
+User={{ bigdata_user }}
+Group={{ bigdata_user }}
+EnvironmentFile=/etc/default/bigdata
+ExecStart={{ item.command }}
+Restart=on-failure
+RestartSec=5
+LimitNOFILE=65536
+LimitNPROC=65536
+
+[Install]
+WantedBy=multi-user.target

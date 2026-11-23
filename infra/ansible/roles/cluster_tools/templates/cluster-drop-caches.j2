@@ -1,0 +1,13 @@
+#!/usr/bin/env bash
+# {{ ansible_managed }}
+# Vide le page cache de TOUS les nœuds. À appeler avant chaque run mesuré,
+# sinon un run « à froid » est comparé à un run « à chaud » (données en RAM).
+set -euo pipefail
+[ "$(id -un)" = "{{ bigdata_user }}" ] || exec sudo -u {{ bigdata_user }} "$0" "$@"
+
+pids=()
+for h in {{ groups['cluster'] | join(' ') }}; do
+  ssh -o BatchMode=yes "$h" sudo /usr/local/sbin/drop-caches &
+  pids+=("$!")
+done
+for p in "${pids[@]}"; do wait "$p"; done

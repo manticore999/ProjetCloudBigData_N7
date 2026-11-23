@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- {{ ansible_managed }} -->
+<configuration>
+  <property>
+    <name>fs.defaultFS</name>
+    <value>hdfs://{{ master_host }}:9000</value>
+  </property>
+  <property>
+    <name>hadoop.tmp.dir</name>
+    <value>{{ data_mount }}/tmp/hadoop</value>
+  </property>
+  <property>
+    <name>io.file.buffer.size</name>
+    <value>131072</value>
+  </property>
+  <!-- Codecs disponibles. Aucun n'est activé par défaut : c'est le runner
+       d'expériences qui choisit explicitement le codec de chaque run. -->
+  <property>
+    <name>io.compression.codecs</name>
+    <value>org.apache.hadoop.io.compress.DefaultCodec,org.apache.hadoop.io.compress.GzipCodec,org.apache.hadoop.io.compress.BZip2Codec,org.apache.hadoop.io.compress.SnappyCodec,org.apache.hadoop.io.compress.Lz4Codec,org.apache.hadoop.io.compress.ZStandardCodec</value>
+  </property>
+</configuration>

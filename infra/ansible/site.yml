@@ -1,0 +1,68 @@
+# Déploiement complet du cluster : `make provision` (idempotent, relançable).
+---
+- name: Socle commun sur tous les nœuds (OS, Java, Hadoop, Spark, node_exporter)
+  hosts: cluster
+  become: true
+  roles:
+    - common
+    - hadoop
+    - spark
+    - node_exporter
+
+- name: Clé SSH du compte hadoop sur le master
+  hosts: master
+  become: true
+  tasks:
+    - name: Générer la clé SSH de l'utilisateur hadoop
+      ansible.builtin.user:
+        name: "{{ bigdata_user }}"
+        generate_ssh_key: true
+        ssh_key_type: ed25519
+      register: hadoop_user
+
+    - name: Mémoriser la clé publique
+      ansible.builtin.set_fact:
+        hadoop_pubkey: "{{ hadoop_user.ssh_public_key }}"
+
+- name: Autoriser le master à piloter tous les nœuds (vidage de cache, empreinte)
+  hosts: cluster
+  become: true
+  tasks:
+    - name: Ajouter la clé du master
+      ansible.posix.authorized_key:
+        user: "{{ bigdata_user }}"
+        key: "{{ hostvars[master_host].hadoop_pubkey }}"
+
+- name: Démarrer HDFS NameNode et YARN ResourceManager
+  hosts: master
+  become: true
+  tasks:
+    - ansible.builtin.import_role:
+        name: hadoop
+        tasks_from: start_master
+
+- name: Démarrer DataNodes et NodeManagers
+  hosts: workers
+  become: true
+  tasks:
+    - ansible.builtin.import_role:
+        name: hadoop
+        tasks_from: start_worker
+
+- name: Initialiser HDFS, Spark History Server, monitoring et outils de mesure
+  hosts: master
+  become: true
+  tasks:
+    - ansible.builtin.import_role:
+        name: hadoop
+        tasks_from: init_hdfs
+    - ansible.builtin.import_role:
+        name: spark
+        tasks_from: history
+    - ansible.builtin.import_role:
+        name: prometheus
+    - ansible.builtin.import_role:
+        name: grafana
+      when: grafana_enabled | bool
+    - ansible.builtin.import_role:
+        name: cluster_tools

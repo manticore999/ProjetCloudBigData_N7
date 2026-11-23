@@ -1,0 +1,7 @@
+---
+# try-restart : ne redémarre que les démons déjà lancés (sans effet au premier déploiement).
+- name: Redémarrer les démons Hadoop
+  ansible.builtin.shell: |
+    systemctl daemon-reload
+    systemctl try-restart {{ hadoop_daemons | map(attribute='name') | join(' ') }}
+  failed_when: false

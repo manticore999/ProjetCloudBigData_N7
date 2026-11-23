@@ -1,0 +1,52 @@
+---
+# Grafana sert à visualiser en direct (debug, démo à l'oral). Les mesures
+# des expériences sont extraites directement de l'API Prometheus.
+- name: Clé du dépôt Grafana
+  ansible.builtin.get_url:
+    url: https://apt.grafana.com/gpg.key
+    dest: /etc/apt/keyrings/grafana.asc
+    mode: "0644"
+
+- name: Dépôt APT Grafana
+  ansible.builtin.apt_repository:
+    repo: "deb [signed-by=/etc/apt/keyrings/grafana.asc] https://apt.grafana.com stable main"
+    filename: grafana
+    state: present
+
+- name: Installer Grafana
+  ansible.builtin.apt:
+    name: grafana
+    state: present
+    update_cache: true
+    lock_timeout: 600
+
+- name: Couper la télémétrie et les vérifications de mise à jour (bruit réseau/CPU)
+  ansible.builtin.lineinfile:
+    path: /etc/default/grafana-server
+    regexp: "^{{ item }}="
+    line: "{{ item }}=false"
+  loop:
+    - GF_ANALYTICS_REPORTING_ENABLED
+    - GF_ANALYTICS_CHECK_FOR_UPDATES
+    - GF_ANALYTICS_CHECK_FOR_PLUGIN_UPDATES
+  register: grafana_env
+
+- name: Source de données Prometheus
+  ansible.builtin.copy:
+    dest: /etc/grafana/provisioning/datasources/prometheus.yml
+    mode: "0644"
+    content: |
+      apiVersion: 1
+      datasources:
+        - name: Prometheus
+          type: prometheus
+          access: proxy
+          url: http://localhost:9090
+          isDefault: true
+  register: grafana_ds
+
+- name: Démarrer Grafana
+  ansible.builtin.systemd:
+    name: grafana-server
+    state: "{{ 'restarted' if (grafana_env.changed or grafana_ds.changed) else 'started' }}"
+    enabled: true

@@ -1,0 +1,16 @@
+---
+hadoop_master_daemons:
+  - name: hdfs-namenode
+    description: HDFS NameNode
+    command: "{{ hadoop_home }}/bin/hdfs namenode"
+  - name: yarn-resourcemanager
+    description: YARN ResourceManager
+    command: "{{ hadoop_home }}/bin/yarn resourcemanager"
+
+hadoop_worker_daemons:
+  - name: hdfs-datanode
+    description: HDFS DataNode
+    command: "{{ hadoop_home }}/bin/hdfs datanode"
+  - name: yarn-nodemanager
+    description: YARN NodeManager
+    command: "{{ hadoop_home }}/bin/yarn nodemanager"

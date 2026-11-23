@@ -1,0 +1,187 @@
+---
+- name: Attendre la fin de cloud-init (évite les verrous apt au premier boot)
+  ansible.builtin.command: cloud-init status --wait
+  changed_when: false
+  failed_when: false
+
+- name: Couper les tâches de fond qui perturbent les mesures (apt, man-db, fstrim, logrotate...)
+  ansible.builtin.shell: |
+    for u in {{ noisy_units | join(' ') }}; do
+      systemctl disable --now "$u" >/dev/null 2>&1 || true
+      systemctl mask "$u" >/dev/null 2>&1 || true
+    done
+  changed_when: false
+
+- name: Geler les mises à jour automatiques des snaps
+  ansible.builtin.command: snap refresh --hold
+  changed_when: false
+  failed_when: false
+
+- name: Installer Java et les bibliothèques de compression natives
+  ansible.builtin.apt:
+    name:
+      - "{{ java_package }}"
+      - python3
+      - acl
+      - rsync
+      - curl
+      - jq
+      - libsnappy1v5
+      - libsnappy-dev
+      - libzstd-dev
+      - liblz4-dev
+      - zlib1g-dev
+      - libbz2-dev
+    state: present
+    update_cache: true
+    cache_valid_time: 3600
+    lock_timeout: 600
+
+# --- Mémoire / noyau ----------------------------------------------------------
+- name: Désactiver le swap
+  ansible.builtin.command: swapoff -a
+  changed_when: false
+
+- name: Limiter le swapping
+  ansible.posix.sysctl:
+    name: vm.swappiness
+    value: "1"
+    state: present
+    reload: true
+
+- name: Service de désactivation des Transparent Huge Pages (recommandé pour Hadoop)
+  ansible.builtin.copy:
+    dest: /etc/systemd/system/disable-thp.service
+    mode: "0644"
+    content: |
+      [Unit]
+      Description=Disable Transparent Huge Pages
+      DefaultDependencies=no
+      After=sysinit.target local-fs.target
+      Before=basic.target
+
+      [Service]
+      Type=oneshot
+      ExecStart=/bin/sh -c 'echo never > /sys/kernel/mm/transparent_hugepage/enabled; echo never > /sys/kernel/mm/transparent_hugepage/defrag'
+
+      [Install]
+      WantedBy=basic.target
+
+- name: Activer disable-thp
+  ansible.builtin.systemd:
+    name: disable-thp
+    enabled: true
+    state: started
+    daemon_reload: true
+
+# --- Disque de données --------------------------------------------------------
+- name: Formater le disque de données (ext4, sans blocs réservés)
+  community.general.filesystem:
+    fstype: ext4
+    dev: "{{ data_device }}"
+    opts: -m 0
+
+- name: Monter /data
+  ansible.posix.mount:
+    path: "{{ data_mount }}"
+    src: "{{ data_device }}"
+    fstype: ext4
+    opts: defaults,noatime,nofail
+    state: mounted
+
+# --- Résolution de noms -------------------------------------------------------
+- name: Déclarer tous les nœuds dans /etc/hosts
+  ansible.builtin.blockinfile:
+    path: /etc/hosts
+    marker: "# {mark} CLUSTER BIGDATA"
+    block: |
+      {% for h in groups['cluster'] %}
+      {{ hostvars[h].private_ip }} {{ h }}
+      {% endfor %}
+
+# --- Utilisateur de service ---------------------------------------------------
+- name: Utilisateur hadoop
+  ansible.builtin.user:
+    name: "{{ bigdata_user }}"
+    shell: /bin/bash
+    create_home: true
+
+- name: Arborescence sur /data
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    owner: "{{ bigdata_user }}"
+    group: "{{ bigdata_user }}"
+    mode: "0755"
+  loop:
+    - "{{ data_mount }}/hdfs"
+    - "{{ data_mount }}/yarn"
+    - "{{ data_mount }}/logs"
+    - "{{ data_mount }}/tmp"
+
+- name: Dossiers d'installation
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    mode: "0755"
+  loop:
+    - "{{ download_dir }}"
+    - "{{ bench_dir }}"
+
+- name: Limites de fichiers ouverts
+  ansible.builtin.copy:
+    dest: /etc/security/limits.d/90-hadoop.conf
+    mode: "0644"
+    content: |
+      {{ bigdata_user }} - nofile 65536
+      {{ bigdata_user }} - nproc  65536
+
+- name: Variables d'environnement (services systemd)
+  ansible.builtin.template:
+    src: bigdata.env.j2
+    dest: /etc/default/bigdata
+    mode: "0644"
+
+- name: Variables d'environnement (shells interactifs)
+  ansible.builtin.template:
+    src: bigdata-profile.sh.j2
+    dest: /etc/profile.d/bigdata.sh
+    mode: "0644"
+
+- name: Dossier ~/.ssh de hadoop
+  ansible.builtin.file:
+    path: "/home/{{ bigdata_user }}/.ssh"
+    state: directory
+    owner: "{{ bigdata_user }}"
+    group: "{{ bigdata_user }}"
+    mode: "0700"
+
+- name: SSH entre nœuds sans vérification d'empreinte (VMs recréées à chaque déploiement)
+  ansible.builtin.copy:
+    dest: "/home/{{ bigdata_user }}/.ssh/config"
+    owner: "{{ bigdata_user }}"
+    group: "{{ bigdata_user }}"
+    mode: "0600"
+    content: |
+      Host {{ groups['cluster'] | join(' ') }}
+        StrictHostKeyChecking no
+        UserKnownHostsFile /dev/null
+        LogLevel ERROR
+
+# --- Vidage du page cache entre deux runs mesurés ------------------------------
+- name: Script drop-caches
+  ansible.builtin.copy:
+    dest: /usr/local/sbin/drop-caches
+    mode: "0755"
+    content: |
+      #!/bin/sh
+      # Écrit les données en attente puis vide le page cache, les dentries et inodes.
+      sync
+      echo 3 > /proc/sys/vm/drop_caches
+
+- name: Autoriser hadoop à vider le cache sans mot de passe
+  ansible.builtin.copy:
+    dest: /etc/sudoers.d/90-drop-caches
+    mode: "0440"
+    content: "{{ bigdata_user }} ALL=(root) NOPASSWD: /usr/local/sbin/drop-caches\n"
+    validate: visudo -cf %s

@@ -1,0 +1,16 @@
+---
+- name: Outils de mesure du cluster (master)
+  ansible.builtin.template:
+    src: "{{ item }}.j2"
+    dest: "/usr/local/bin/{{ item }}"
+    mode: "0755"
+  loop:
+    - cluster-drop-caches
+    - cluster-fingerprint
+    - cluster-smoke-test
+
+- name: Script de vérification des codecs
+  ansible.builtin.copy:
+    src: codec_check.py
+    dest: "{{ bench_dir }}/codec_check.py"
+    mode: "0644"

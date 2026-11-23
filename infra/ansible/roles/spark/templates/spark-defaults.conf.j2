@@ -1,0 +1,54 @@
+# {{ ansible_managed }}
+#
+# Configuration de BASE commune à toutes les expériences.
+# Elle correspond à la configuration C0 : AUCUNE compression nulle part.
+# Le runner d'expériences active la compression run par run via --conf,
+# ce qui garantit qu'une seule chose change entre deux runs comparés.
+
+# ---------------------------------------------------------------- Exécution
+spark.master                          yarn
+spark.submit.deployMode               client
+spark.yarn.jars                       local:{{ spark_home }}/jars/*
+spark.yarn.am.memory                  512m
+spark.yarn.am.cores                   1
+
+# Ressources FIXES : 1 exécuteur par worker, pas d'allocation dynamique
+spark.executor.instances              {{ spark_executor_instances }}
+spark.executor.cores                  {{ spark_executor_cores }}
+spark.executor.memory                 {{ spark_executor_memory }}
+spark.executor.memoryOverhead         {{ spark_executor_memory_overhead }}
+spark.driver.memory                   {{ spark_driver_memory }}
+spark.dynamicAllocation.enabled       false
+
+# Plan d'exécution déterministe : l'AQE adapte le nombre de partitions à la
+# taille (compressée !) du shuffle, ce qui fausserait la comparaison des codecs.
+spark.sql.adaptive.enabled            false
+spark.sql.shuffle.partitions          {{ spark_sql_shuffle_partitions }}
+spark.speculation                     false
+
+# ---------------------------------------------------------------- Mesures
+spark.eventLog.enabled                true
+spark.eventLog.dir                    hdfs:///spark-logs
+spark.eventLog.compress               false
+spark.history.fs.logDirectory         hdfs:///spark-logs
+
+# ---------------------------------------------------------------- Natif
+spark.driver.extraLibraryPath         {{ hadoop_home }}/lib/native
+spark.executor.extraLibraryPath       {{ hadoop_home }}/lib/native
+spark.yarn.am.extraLibraryPath        {{ hadoop_home }}/lib/native
+spark.pyspark.python                  python3
+
+# ---------------------------------------------------------------- Compression : TOUT DÉSACTIVÉ (C0)
+# Niveau communication (shuffle) — Spark compresse par défaut, on coupe explicitement
+spark.shuffle.compress                false
+spark.shuffle.spill.compress          false
+spark.io.compression.codec            lz4
+# Autres compressions internes, coupées pour isoler l'effet étudié
+spark.broadcast.compress              false
+spark.rdd.compress                    false
+spark.checkpoint.compress             false
+# Niveau stockage (fichiers écrits par Spark)
+spark.sql.parquet.compression.codec   uncompressed
+spark.sql.orc.compression.codec       none
+spark.hadoop.mapreduce.output.fileoutputformat.compress   false
+spark.hadoop.mapreduce.map.output.compress                false

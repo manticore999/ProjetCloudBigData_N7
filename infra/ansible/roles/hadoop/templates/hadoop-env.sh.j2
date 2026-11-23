@@ -1,0 +1,15 @@
+# {{ ansible_managed }}
+export JAVA_HOME={{ java_home }}
+export HADOOP_HOME={{ hadoop_home }}
+export HADOOP_CONF_DIR={{ hadoop_conf_dir }}
+export HADOOP_LOG_DIR={{ data_mount }}/logs/hadoop
+export HADOOP_PID_DIR={{ data_mount }}/tmp/pids
+
+# Bibliothèques natives (zlib, zstd, bzip2...) pour les codecs Hadoop
+export HADOOP_OPTS="$HADOOP_OPTS -Djava.library.path={{ hadoop_home }}/lib/native"
+
+# Tailles de tas fixes : pas de variation de mémoire disponible entre runs
+export HDFS_NAMENODE_OPTS="-Xms{{ namenode_heap }} -Xmx{{ namenode_heap }}"
+export HDFS_DATANODE_OPTS="-Xms{{ datanode_heap }} -Xmx{{ datanode_heap }}"
+export YARN_RESOURCEMANAGER_OPTS="-Xms{{ resourcemanager_heap }} -Xmx{{ resourcemanager_heap }}"
+export YARN_NODEMANAGER_OPTS="-Xms{{ nodemanager_heap }} -Xmx{{ nodemanager_heap }}"

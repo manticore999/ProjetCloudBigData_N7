@@ -1,0 +1,34 @@
+---
+- name: Attendre la sortie du safe mode HDFS
+  ansible.builtin.command: "{{ hadoop_home }}/bin/hdfs dfsadmin -safemode wait"
+  become_user: "{{ bigdata_user }}"
+  environment: "{{ bigdata_env }}"
+  changed_when: false
+
+- name: Attendre que tous les DataNodes soient enregistrés
+  ansible.builtin.shell: "{{ hadoop_home }}/bin/hdfs dfsadmin -report -live 2>/dev/null | grep -c '^Name:'"
+  become_user: "{{ bigdata_user }}"
+  environment: "{{ bigdata_env }}"
+  register: live_datanodes
+  until: live_datanodes.stdout | int == groups['workers'] | length
+  retries: 36
+  delay: 5
+  changed_when: false
+
+- name: Attendre que tous les NodeManagers soient enregistrés
+  ansible.builtin.shell: "{{ hadoop_home }}/bin/yarn node -list 2>/dev/null | grep -c RUNNING"
+  become_user: "{{ bigdata_user }}"
+  environment: "{{ bigdata_env }}"
+  register: running_nodemanagers
+  until: running_nodemanagers.stdout | int == groups['workers'] | length
+  retries: 36
+  delay: 5
+  changed_when: false
+
+- name: Arborescence HDFS
+  ansible.builtin.shell: |
+    hdfs dfs -mkdir -p /tmp /spark-logs /user/{{ bigdata_user }} /bench
+    hdfs dfs -chmod 1777 /tmp /spark-logs
+  become_user: "{{ bigdata_user }}"
+  environment: "{{ bigdata_env }}"
+  changed_when: false

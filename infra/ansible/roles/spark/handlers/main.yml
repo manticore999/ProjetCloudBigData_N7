@@ -1,0 +1,4 @@
+---
+- name: Redémarrer le Spark History Server
+  ansible.builtin.command: systemctl try-restart spark-history
+  failed_when: false

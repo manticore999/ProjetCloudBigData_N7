@@ -1,0 +1,4 @@
+# {{ ansible_managed }}
+{% for k, v in bigdata_env.items() %}
+export {{ k }}="{{ v }}"
+{% endfor %}

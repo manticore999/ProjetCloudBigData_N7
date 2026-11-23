@@ -1,0 +1,58 @@
+#!/usr/bin/env bash
+# {{ ansible_managed }}
+# Vérifie que le cluster est prêt pour les mesures :
+#   HDFS, YARN, bibliothèques natives, chaque codec au niveau stockage et shuffle.
+set -uo pipefail
+[ "$(id -un)" = "{{ bigdata_user }}" ] || exec sudo -iu {{ bigdata_user }} "$0" "$@"
+source /etc/profile.d/bigdata.sh
+
+WORKERS={{ groups['workers'] | length }}
+status=0
+fail() { echo "FAIL $*"; status=1; }
+
+echo "== HDFS"
+live=$(hdfs dfsadmin -report -live 2>/dev/null | grep -c '^Name:')
+[ "$live" -eq "$WORKERS" ] && echo "CHECK datanodes=$live OK" || fail "datanodes=$live (attendu $WORKERS)"
+
+echo "== YARN"
+running=$(yarn node -list 2>/dev/null | grep -c RUNNING)
+[ "$running" -eq "$WORKERS" ] && echo "CHECK nodemanagers=$running OK" || fail "nodemanagers=$running (attendu $WORKERS)"
+
+echo "== Bibliothèques natives Hadoop"
+native=$(hadoop checknative 2>/dev/null)
+echo "$native" | grep -E '^(hadoop|zlib|zstd|bzip2)'
+for lib in hadoop zlib zstd bzip2; do
+  echo "$native" | grep -Eq "^${lib}[[:space:]]*:[[:space:]]*true" \
+    && echo "CHECK native-$lib OK" || fail "native-$lib absent"
+done
+
+LOGS=$(mktemp -d /tmp/smoke.XXXX)
+
+# run_spark <nom> <args...> : lance spark-submit, affiche les lignes CHECK/FAIL,
+# garde les logs Spark complets dans $LOGS/<nom>.log en cas d'échec.
+run_spark() {
+  local name=$1; shift
+  local out rc
+  out=$(spark-submit --conf spark.log.level=WARN "$@" 2>"$LOGS/$name.log"); rc=$?
+  echo "$out" | grep -E '^(CHECK|FAIL)'
+  [ "$rc" -eq 0 ] || fail "$name (logs : $LOGS/$name.log)"
+}
+
+echo "== Codecs niveau stockage (CSV + Parquet)"
+run_spark storage {{ bench_dir }}/codec_check.py storage
+
+echo "== Codecs niveau shuffle"
+for codec in lz4 lzf snappy zstd; do
+  run_spark "shuffle-$codec" \
+    --conf spark.shuffle.compress=true --conf spark.shuffle.spill.compress=true \
+    --conf spark.io.compression.codec="$codec" \
+    {{ bench_dir }}/codec_check.py shuffle
+done
+
+echo "== Vidage des caches sur tous les nœuds"
+cluster-drop-caches && echo "CHECK drop-caches OK" || fail "drop-caches"
+
+hdfs dfs -rm -r -f -skipTrash /tmp/codec-check >/dev/null 2>&1
+
+[ "$status" -eq 0 ] && echo "OK cluster prêt" || echo "FAIL au moins un test a échoué"
+exit "$status"

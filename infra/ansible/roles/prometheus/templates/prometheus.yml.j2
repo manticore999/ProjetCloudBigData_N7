@@ -1,0 +1,20 @@
+# {{ ansible_managed }}
+global:
+  scrape_interval: {{ prometheus_scrape_interval }}
+  evaluation_interval: 15s
+  external_labels:
+    cluster: {{ cluster_name }}
+
+scrape_configs:
+  - job_name: node
+    static_configs:
+{% for h in groups['cluster'] %}
+      - targets: ["{{ h }}:9100"]
+        labels:
+          node: "{{ h }}"
+          role: "{{ 'master' if h in groups['master'] else 'worker' }}"
+{% endfor %}
+
+  - job_name: prometheus
+    static_configs:
+      - targets: ["localhost:9090"]

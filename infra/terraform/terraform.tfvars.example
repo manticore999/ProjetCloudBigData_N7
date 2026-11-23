@@ -1,0 +1,6 @@
+# Copier en terraform.tfvars (ignoré par git) et remplir.
+# Seules ces 3 lignes sont personnelles : tout le reste est commun à l'équipe.
+
+project_id  = "mon-projet-gcp-123456"
+owner       = "prenom"
+admin_cidrs = ["203.0.113.7/32"] # curl -4 ifconfig.me

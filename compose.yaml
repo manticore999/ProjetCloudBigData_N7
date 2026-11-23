@@ -1,0 +1,25 @@
+# Lancer la toolbox :  docker compose run --rm toolbox
+# Pour les UIs web    :  docker compose run --rm --service-ports toolbox make tunnel
+services:
+  toolbox:
+    build: ./toolbox
+    image: cbench-toolbox:1
+    working_dir: /work
+    volumes:
+      - .:/work
+      - tfdata:/tfdata # plugins Terraform hors du dossier monté (plus rapide sous Windows)
+    environment:
+      GOOGLE_APPLICATION_CREDENTIALS: /work/.secrets/gcp-adc.json
+      TF_DATA_DIR: /tfdata
+      ANSIBLE_CONFIG: /work/infra/ansible/ansible.cfg
+    ports:
+      - "9870:9870"   # HDFS NameNode UI
+      - "8088:8088"   # YARN ResourceManager UI
+      - "18080:18080" # Spark History Server
+      - "9090:9090"   # Prometheus
+      - "3000:3000"   # Grafana
+    stdin_open: true
+    tty: true
+
+volumes:
+  tfdata:
